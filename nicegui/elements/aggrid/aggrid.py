@@ -6,6 +6,7 @@ from ...awaitable_response import AwaitableResponse
 from ...defaults import DEFAULT_PROP, resolve_defaults
 from ...dependencies import register_importmap_override
 from ...element import Element
+from ...helpers.dataframes import _pandas_column_fields
 
 optional_features.try_register('pandas')
 if TYPE_CHECKING:
@@ -95,8 +96,10 @@ class AgGrid(Element, component='aggrid.js', esm={'nicegui-aggrid': 'dist'}, def
         """
         options = options or {}
         rows, columns = helpers.pandas_to_records(df)
+        fields, _ = _pandas_column_fields(columns)
         return cls({
-            'columnDefs': [{'field': str(col)} for col in columns],
+            'columnDefs': [{'field': str(field), 'headerName': str(col)}
+                           for col, field in zip(columns, fields, strict=True)],
             'rowData': rows,
             'suppressFieldDotNotation': True,
             **options,

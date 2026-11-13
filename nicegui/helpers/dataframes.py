@@ -1,9 +1,26 @@
 """Conversion of Pandas and Polars DataFrames into records for table-like elements."""
+from collections import Counter
 from typing import TYPE_CHECKING, Any
+
+from .warnings import warn_once
 
 if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
+
+
+def _pandas_column_fields(columns: list[Any]) -> tuple[list[Any], list[Any]]:
+    column_counts = Counter(columns)
+    duplicated_columns = [column for column, count in column_counts.items() if count > 1]
+    field_counts = Counter()
+    fields = []
+    for column in columns:
+        if column_counts[column] > 1:
+            fields.append(f'{column}_{field_counts[column]}')
+            field_counts[column] += 1
+        else:
+            fields.append(column)
+    return fields, duplicated_columns
 
 
 def pandas_to_records(df: 'pd.DataFrame') -> tuple[list[dict], list[Any]]:
@@ -11,11 +28,23 @@ def pandas_to_records(df: 'pd.DataFrame') -> tuple[list[dict], list[Any]]:
 
     Columns which cannot be serialized to JSON (datetimes, timedeltas, complex numbers,
     objects, periods and intervals) are converted to strings.
+    Duplicate column labels are preserved in the returned labels and suffixed in record fields.
     """
     import pandas as pd  # pylint: disable=import-outside-toplevel
 
     if not isinstance(df.index, pd.RangeIndex) or df.index.name is not None:
         df = df.reset_index()
+
+    columns = list(df.columns)
+    if isinstance(df.columns, pd.MultiIndex):
+        raise ValueError('MultiIndex columns are not supported. '
+                         'You can convert them to strings using something like '
+                         '`df.columns = ["_".join(col) for col in df.columns.values]`.')
+
+    fields, duplicated_columns = _pandas_column_fields(columns)
+    if duplicated_columns:
+        warn_once(f'Duplicate pandas DataFrame column names {duplicated_columns!r} will be renamed for row fields.')
+        df = df.set_axis(fields, axis='columns')
 
     def is_special_dtype(dtype) -> bool:
         return (pd.api.types.is_datetime64_any_dtype(dtype) or
@@ -29,12 +58,7 @@ def pandas_to_records(df: 'pd.DataFrame') -> tuple[list[dict], list[Any]]:
         df = df.copy()
         df[special_cols] = df[special_cols].astype(str)
 
-    if isinstance(df.columns, pd.MultiIndex):
-        raise ValueError('MultiIndex columns are not supported. '
-                         'You can convert them to strings using something like '
-                         '`df.columns = ["_".join(col) for col in df.columns.values]`.')
-
-    return df.to_dict('records'), list(df.columns)
+    return df.to_dict('records'), columns
 
 
 def polars_to_records(df: 'pl.DataFrame') -> tuple[list[dict], list[str]]:
