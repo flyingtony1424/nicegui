@@ -271,6 +271,73 @@ def test_create_and_update_from_df(screen: Screen, df_type: str):
     screen.should_contain('19')
 
 
+def test_pandas_with_duplicate_columns(screen: Screen):
+    table = None
+
+    @ui.page('/')
+    def page():
+        nonlocal table
+        df = pd.DataFrame([[1, 2, 3, 4]], columns=['a', 'a', 'b', 'b'])
+        table = ui.table.from_pandas(df)
+
+    screen.open('/')
+    for item in ['a', 'b', '1', '2', '3', '4']:
+        screen.should_contain(item)
+    assert table is not None
+    assert [column['field'] for column in table.columns] == ['a_0', 'a_1', 'b_0', 'b_1']
+    assert [column['label'] for column in table.columns] == ['a', 'a', 'b', 'b']
+    assert table.rows == [{'a_0': 1, 'a_1': 2, 'b_0': 3, 'b_1': 4}]
+
+
+def test_pandas_with_duplicate_integer_columns(screen: Screen):
+    table = None
+
+    @ui.page('/')
+    def page():
+        nonlocal table
+        table = ui.table.from_pandas(pd.DataFrame([[1, 2]], columns=[0, 0]))
+
+    screen.open('/')
+    screen.should_contain('1')
+    screen.should_contain('2')
+    assert table is not None
+    assert table.rows == [{'0_0': 1, '0_1': 2}]
+
+
+def test_pandas_with_unique_columns_unchanged(screen: Screen):
+    table = None
+
+    @ui.page('/')
+    def page():
+        nonlocal table
+        table = ui.table.from_pandas(pd.DataFrame([[1, 2]], columns=['a', 'b']))
+
+    screen.open('/')
+    screen.should_contain('a')
+    screen.should_contain('b')
+    screen.should_contain('1')
+    screen.should_contain('2')
+    assert table is not None
+    assert [column['field'] for column in table.columns] == ['a', 'b']
+    assert [column['label'] for column in table.columns] == ['a', 'b']
+    assert table.rows == [{'a': 1, 'b': 2}]
+
+
+def test_pandas_duplicate_column_warning_is_logged_once(screen: Screen):
+    @ui.page('/')
+    def page():
+        columns = ['duplicate_warning_column', 'duplicate_warning_column']
+        df = pd.DataFrame([[1, 2]], columns=columns)
+        table = ui.table.from_pandas(pd.DataFrame({'value': [0]}))
+        table.update_from_pandas(df)
+        table.update_from_pandas(df)
+
+    screen.open('/')
+    warnings = [record for record in screen.caplog.records if 'duplicate_warning_column' in record.message]
+    assert len(warnings) == 1
+    assert warnings[0].levelname == 'WARNING'
+
+
 @pytest.mark.parametrize('df_type', ['pandas', 'polars'])
 def test_problematic_datatypes(screen: Screen, df_type: str):
     @ui.page('/')

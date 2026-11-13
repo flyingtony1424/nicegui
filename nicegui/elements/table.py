@@ -10,6 +10,7 @@ from ..events import (
     ValueChangeEventArguments,
     handle_event,
 )
+from ..helpers.dataframes import _pandas_column_fields
 from ..logging import log
 from .mixins.filter_element import FilterElement
 
@@ -315,7 +316,8 @@ class Table(FilterElement, component='table.js'):
     @staticmethod
     def _pandas_df_to_rows_and_columns(df: 'pd.DataFrame') -> tuple[list[dict], list[dict]]:
         rows, columns = helpers.pandas_to_records(df)
-        return rows, [{'name': col, 'label': col, 'field': col} for col in columns]
+        fields, _ = _pandas_column_fields(columns)
+        return rows, [{'name': col, 'label': col, 'field': field} for col, field in zip(columns, fields, strict=True)]
 
     @staticmethod
     def _polars_df_to_rows_and_columns(df: 'pl.DataFrame') -> tuple[list[dict], list[dict]]:
